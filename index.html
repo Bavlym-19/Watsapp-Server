@@ -1,159 +1,162 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhatsApp Multi-Session</title>
-    <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; min-height: 100vh; background-color: #f0f2f5; padding: 20px; box-sizing: border-box; }
-        h1 { color: #075e54; margin-bottom: 30px; }
-        .session-container { background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; width: 100%; max-width: 400px; }
-        .session-container h2 { color: #128c7e; margin-top: 0; }
-        .qr-display, .pairing-code-display { margin-top: 1rem; }
-        img { max-width: 250px; height: auto; border: 1px solid #eee; padding: 5px; border-radius: 5px; }
-        .status-text { margin-top: 1rem; font-weight: bold; }
-        .connected { color: #25d366; }
-        .connecting { color: #ffc107; }
-        .logged-out { color: #dc3545; }
-        .buttons button { background-color: #25d366; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 5px; }
-        .buttons button:hover { background-color: #128c7e; }
-        .pairing-input { margin-top: 10px; display: flex; flex-direction: column; align-items: center; }
-        .pairing-input input { padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; width: 80%; max-width: 200px; text-align: center; }
-    </style>
-</head>
-<body>
-    <h1>إدارة جلسات واتساب المتعددة</h1>
+const {
+    default: makeWASocket,
+    useMultiFileAuthState,
+    DisconnectReason,
+    fetchLatestBaileysVersion,
+    makeCacheableSignalKeyStore,
+    isJidBroadcast, isJidGroup, jidNormalizedUser
+} = require("@whiskeysockets/baileys");
+const { Boom } = require("@hapi/boom");
+const P = require("pino");
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+const qrcode = require("qrcode");
+const path = require("path");
+const fs = require("fs");
 
-    <div id="session1" class="session-container">
-        <h2>الجلسة 1</h2>
-        <div class="qr-display"></div>
-        <div class="pairing-code-display"></div>
-        <div class="status-text" id="status1">الحالة: غير متصل</div>
-        <div class="buttons">
-            <button onclick="startSession('session1', false)">بدء بالـ QR</button>
-            <button onclick="showPairingInput('session1')">بدء بكود الربط</button>
-        </div>
-        <div class="pairing-input" id="pairingInput1" style="display:none;">
-            <input type="text" id="phoneNumber1" placeholder="أدخل رقم الهاتف (مثال: 201234567890)">
-            <button onclick="startSession('session1', true)">تأكيد كود الربط</button>
-        </div>
-    </div>
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+const port = process.env.PORT || 3000;
 
-    <div id="session2" class="session-container">
-        <h2>الجلسة 2</h2>
-        <div class="qr-display"></div>
-        <div class="pairing-code-display"></div>
-        <div class="status-text" id="status2">الحالة: غير متصل</div>
-        <div class="buttons">
-            <button onclick="startSession('session2', false)">بدء بالـ QR</button>
-            <button onclick="showPairingInput('session2')">بدء بكود الربط</button>
-        </div>
-        <div class="pairing-input" id="pairingInput2" style="display:none;">
-            <input type="text" id="phoneNumber2" placeholder="أدخل رقم الهاتف (مثال: 201234567890)">
-            <button onclick="startSession('session2', true)">تأكيد كود الربط</button>
-        </div>
-    </div>
+// --- السطر المضاف: قراءة مفتاح الأمان من إعدادات ريندر ---
+const API_KEY = process.env.API_KEY || "Bavlym19"; 
 
-    <div id="session3" class="session-container">
-        <h2>الجلسة 3</h2>
-        <div class="qr-display"></div>
-        <div class="pairing-code-display"></div>
-        <div class="status-text" id="status3">الحالة: غير متصل</div>
-        <div class="buttons">
-            <button onclick="startSession('session3', false)">بدء بالـ QR</button>
-            <button onclick="showPairingInput('session3')">بدء بكود الربط</button>
-        </div>
-        <div class="pairing-input" id="pairingInput3" style="display:none;">
-            <input type="text" id="phoneNumber3" placeholder="أدخل رقم الهاتف (مثال: 201234567890)">
-            <button onclick="startSession('session3', true)">تأكيد كود الربط</button>
-        </div>
-    </div>
+app.use(express.json());
 
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
-        const socket = io();
+// Store active WhatsApp sessions
+const sessions = {};
 
-        function showPairingInput(sessionId) {
-            document.getElementById(`pairingInput${sessionId.replace('session', '')}`).style.display = 'flex';
+// HTML Page to show QR Code and pairing code options for multiple sessions
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "index.html"));
+});
+
+// API to start a new session or get status of existing one
+app.post("/session/start", async (req, res) => {
+    const { sessionId, usePairingCode, phoneNumber } = req.body;
+
+    if (!sessionId) {
+        return res.status(400).json({ error: "Session ID is required." });
+    }
+
+    if (sessions[sessionId] && sessions[sessionId].sock && sessions[sessionId].sock.user) {
+        return res.status(200).json({ status: "already_connected", user: sessions[sessionId].sock.user });
+    }
+
+    try {
+        const sock = await startWhatsAppSession(sessionId, usePairingCode, phoneNumber);
+        sessions[sessionId] = { sock, status: "connecting" };
+        res.json({ success: true, message: `Session <LaTex>${sessionId} started.` });
+    } catch (error) {
+        console.error(`Error starting session $</LaTex>{sessionId}:`, error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// API to get status of a specific session
+app.get("/session/:sessionId/status", (req, res) => {
+    const { sessionId } = req.params;
+    if (sessions[sessionId]) {
+        res.json({ status: sessions[sessionId].status, user: sessions[sessionId].sock?.user });
+    } else {
+        res.status(404).json({ error: "Session not found." });
+    }
+});
+
+async function startWhatsAppSession(sessionId, usePairingCode = false, phoneNumber = null) {
+    const authPath = `auth_info_baileys_${sessionId}`;
+    const { state, saveCreds } = await useMultiFileAuthState(authPath);
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    
+    const logger = P({ level: "silent" }); // Use silent logger for less console spam
+    
+    const sock = makeWASocket({
+        version,
+        auth: {
+            creds: state.creds,
+            keys: makeCacheableSignalKeyStore(state.creds, logger),
+        },
+        printQRInTerminal: false, // We will handle QR code via WebSocket
+        logger,
+        browser: ['Chrome', 'Ubuntu', '1.0'], // Custom browser info
+        usePairingCode: usePairingCode, // Enable pairing code
+        phoneNumber: usePairingCode ? phoneNumber : undefined // Provide phone number for pairing code
+    });
+
+    if (usePairingCode && !sock.user && phoneNumber) {
+        const code = await sock.requestPairingCode(phoneNumber);
+        console.log(`Pairing Code for session ${sessionId}: <LaTex>${code}`);
+        io.emit("pairing_code", { sessionId, code });
+    }
+
+    sock.ev.on("connection.update", async (update) => {
+        const { connection, lastDisconnect, qr, isNewLogin } = update;
+        
+        if (qr) {
+            console.log(`QR Code received for session $</LaTex>{sessionId}, emitting to socket...`);
+            const qrImage = await qrcode.toDataURL(qr);
+            io.emit("qr", { sessionId, qrImage });
+            sessions[sessionId].status = "qr_received";
         }
 
-        async function startSession(sessionId, usePairingCode) {
-            const sessionDiv = document.getElementById(sessionId);
-            const qrDisplay = sessionDiv.querySelector('.qr-display');
-            const pairingCodeDisplay = sessionDiv.querySelector('.pairing-code-display');
-            const statusText = sessionDiv.querySelector('.status-text');
-            const phoneNumberInput = document.getElementById(`phoneNumber${sessionId.replace('session', '')}`);
-            const phoneNumber = phoneNumberInput ? phoneNumberInput.value : null;
-
-            qrDisplay.innerHTML = '';
-            pairingCodeDisplay.innerHTML = '';
-            statusText.className = 'status-text connecting';
-            statusText.innerText = 'الحالة: جاري الاتصال...';
-
-            try {
-                const response = await fetch('/session/start', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sessionId, usePairingCode, phoneNumber })
-                });
-                const data = await response.json();
-                if (data.success) {
-                    console.log(data.message);
-                    if (data.status === "already_connected") {
-                        statusText.innerText = `الحالة: متصل (${data.user.id.user})`;
-                        statusText.className = 'status-text connected';
-                    }
-                } else {
-                    statusText.innerText = `الحالة: خطأ - ${data.error}`;
-                    statusText.className = 'status-text logged-out';
-                }
-            } catch (error) {
-                console.error('Error starting session:', error);
-                statusText.innerText = `الحالة: خطأ في الاتصال - ${error.message}`;
-                statusText.className = 'status-text logged-out';
+        if (connection === "close") {
+            let reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
+            if (reason === DisconnectReason.loggedOut) {
+                console.log(`Session ${sessionId} logged out. Deleting auth files.`);
+                // Optionally delete auth files to force new login
+                if (fs.existsSync(authPath)) fs.rmSync(authPath, { recursive: true, force: true });
+                sessions[sessionId].status = "logged_out";
+                io.emit("status", { sessionId, status: "logged_out" });
+            } else {
+                console.log(`Connection closed for session ${sessionId} due to ${lastDisconnect?.error}, reconnecting...`);
+                sessions[sessionId].status = "reconnecting";
+                io.emit("status", { sessionId, status: "reconnecting" });
+                // Reconnect logic
+                setTimeout(() => startWhatsAppSession(sessionId, usePairingCode, phoneNumber), 5000);
             }
+        } else if (connection === "open") {
+            console.log(`Opened connection for session ${sessionId}`);
+            sessions[sessionId].status = "connected";
+            io.emit("status", { sessionId, status: "connected", user: sock.user });
         }
+    });
 
-        socket.on("qr", (data) => {
-            const sessionDiv = document.getElementById(data.sessionId);
-            if (sessionDiv) {
-                sessionDiv.querySelector('.qr-display').innerHTML = `<img src="${data.qrImage}" alt="QR Code">`;
-                sessionDiv.querySelector('.pairing-code-display').innerHTML = '';
-                sessionDiv.querySelector('.status-text').innerText = "الحالة: امسح الكود الآن";
-                sessionDiv.querySelector('.status-text').className = 'status-text connecting';
-            }
-        });
+    sock.ev.on("creds.update", saveCreds);
 
-        socket.on("pairing_code", (data) => {
-            const sessionDiv = document.getElementById(data.sessionId);
-            if (sessionDiv) {
-                sessionDiv.querySelector('.qr-display').innerHTML = '';
-                sessionDiv.querySelector('.pairing-code-display').innerHTML = `<h3>كود الربط: <strong>${data.code}</strong></h3><p>أدخل هذا الكود في واتساب على هاتفك.</p>`;
-                sessionDiv.querySelector('.status-text').innerText = "الحالة: أدخل كود الربط";
-                sessionDiv.querySelector('.status-text').className = 'status-text connecting';
-            }
-        });
+    return sock;
+}
 
-        socket.on("status", (data) => {
-            const sessionDiv = document.getElementById(data.sessionId);
-            if (sessionDiv) {
-                const statusText = sessionDiv.querySelector('.status-text');
-                if (data.status === "connected") {
-                    statusText.innerText = `الحالة: متصل (${data.user.id.user})`;
-                    statusText.className = 'status-text connected';
-                    sessionDiv.querySelector('.qr-display').innerHTML = '<h3>✅ تم الاتصال بنجاح!</h3>';
-                    sessionDiv.querySelector('.pairing-code-display').innerHTML = '';
-                } else if (data.status === "logged_out") {
-                    statusText.innerText = "الحالة: تم تسجيل الخروج. ابدأ جلسة جديدة.";
-                    statusText.className = 'status-text logged-out';
-                    sessionDiv.querySelector('.qr-display').innerHTML = '';
-                    sessionDiv.querySelector('.pairing-code-display').innerHTML = '';
-                } else if (data.status === "reconnecting") {
-                    statusText.innerText = "الحالة: جاري إعادة الاتصال...";
-                    statusText.className = 'status-text connecting';
-                }
-            }
-        });
-    </script>
-</body>
-</html>
+// API to send message from Replit for a specific session
+app.post("/send-message", async (req, res) => {
+    const { sessionId, number, message, key } = req.body;
+
+    // --- السطور المضافة: التأكد من صحة مفتاح الأمان ---
+    if (key !== API_KEY) {
+        return res.status(401).json({ error: "خطأ: مفتاح الأمان غير صحيح!" });
+    }
+
+    if (!sessionId || !number || !message) {
+        return res.status(400).json({ error: "Session ID, number, and message are required" });
+    }
+
+    const session = sessions[sessionId];
+    if (!session || !session.sock || session.status !== "connected") {
+        return res.status(400).json({ error: `Session <LaTex>${sessionId} is not connected.` });
+    }
+
+    try {
+        const jid = number.includes("@s.whatsapp.net") ? number : `$</LaTex>{number}@s.whatsapp.net`;
+        await session.sock.sendMessage(jid, { text: message });
+        res.json({ success: true, sessionId });
+    } catch (err) {
+        console.error(`Error sending message for session <LaTex>${sessionId}:`, err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+server.listen(port, () => {
+    console.log(`Server is running on port $</LaTex>{port}`);
+});
+
