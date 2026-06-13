@@ -4,158 +4,438 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhatsApp Multi-Session</title>
+    <title>السيرفر الأول | إدارة عقارات واتساب</title>
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&family=Inter:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; min-height: 100vh; background-color: #f0f2f5; padding: 20px; box-sizing: border-box; }
-        h1 { color: #075e54; margin-bottom: 30px; }
-        .session-container { background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; width: 100%; max-width: 400px; }
-        .session-container h2 { color: #128c7e; margin-top: 0; }
-        .qr-display, .pairing-code-display { margin-top: 1rem; }
-        img { max-width: 250px; height: auto; border: 1px solid #eee; padding: 5px; border-radius: 5px; }
-        .status-text { margin-top: 1rem; font-weight: bold; }
-        .connected { color: #25d366; }
-        .connecting { color: #ffc107; }
-        .logged-out { color: #dc3545; }
-        .buttons button { background-color: #25d366; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 5px; }
-        .buttons button:hover { background-color: #128c7e; }
-        .pairing-input { margin-top: 10px; display: flex; flex-direction: column; align-items: center; }
-        .pairing-input input { padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; width: 80%; max-width: 200px; text-align: center; }
+        :root {
+            --primary-color: #1e3a8a; /* Deep Blue - Real Estate Feel */
+            --secondary-color: #10b981; /* Success Green */
+            --bg-light: #f8fafc;
+            --card-light: #ffffff;
+            --text-light: #1e293b;
+            --bg-dark: #0f172a;
+            --card-dark: #1e293b;
+            --text-dark: #f8fafc;
+            --transition: all 0.3s ease;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: var(--bg-dark);
+            --card-bg: var(--card-dark);
+            --text-color: var(--text-dark);
+        }
+
+        [data-theme="light"] {
+            --bg-color: var(--bg-light);
+            --card-bg: var(--card-light);
+            --text-color: var(--text-light);
+        }
+
+        body {
+            font-family: 'Cairo', 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        header {
+            width: 100%;
+            padding: 20px 0;
+            background: var(--card-bg);
+            box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+        }
+
+        .btn-icon {
+            background: none;
+            border: 1px solid #ccc;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: var(--text-color);
+            transition: var(--transition);
+        }
+
+        .btn-icon:hover {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        .container {
+            max-width: 1200px;
+            width: 90%;
+            margin: 40px auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 25px;
+        }
+
+        .session-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            text-align: center;
+            transition: var(--transition);
+            border: 1px solid transparent;
+        }
+
+        .session-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary-color);
+        }
+
+        .session-card h2 {
+            margin-top: 0;
+            font-size: 1.4rem;
+            color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .qr-wrapper {
+            margin: 20px 0;
+            min-height: 250px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f1f5f9;
+            border-radius: 15px;
+            overflow: hidden;
+        }
+
+        [data-theme="dark"] .qr-wrapper {
+            background: #334155;
+        }
+
+        .qr-wrapper img {
+            max-width: 220px;
+            height: auto;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 15px;
+            border-radius: 50px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+
+        .status-offline { background: #fee2e2; color: #dc2626; }
+        .status-connecting { background: #fef3c7; color: #d97706; }
+        .status-online { background: #dcfce7; color: #16a34a; }
+
+        .actions {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: var(--transition);
+            font-family: inherit;
+        }
+
+        .btn-secondary {
+            background-color: transparent;
+            color: var(--primary-color);
+            border: 2px solid var(--primary-color);
+            padding: 10px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: var(--transition);
+            font-family: inherit;
+        }
+
+        .btn-primary:hover { opacity: 0.9; transform: scale(1.02); }
+        .btn-secondary:hover { background: var(--primary-color); color: white; }
+
+        .pairing-form {
+            margin-top: 15px;
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .pairing-form input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        footer {
+            margin-top: auto;
+            padding: 20px;
+            font-size: 0.9rem;
+            color: #64748b;
+        }
+
+        /* Language specific adjustments */
+        [lang="en"] { direction: ltr; font-family: 'Inter', sans-serif; }
     </style>
 </head>
-<body>
-    <h1>إدارة جلسات واتساب المتعددة</h1>
-
-    <div id="session1" class="session-container">
-        <h2>الجلسة 1</h2>
-        <div class="qr-display"></div>
-        <div class="pairing-code-display"></div>
-        <div class="status-text" id="status1">الحالة: غير متصل</div>
-        <div class="buttons">
-            <button onclick="startSession('session1', false)">بدء بالـ QR</button>
-            <button onclick="showPairingInput('session1')">بدء بكود الربط</button>
+<body data-theme="light">
+    <header>
+        <div class="logo">
+            <i class="fas fa-building"></i>
+            <span data-i18n="brand">السيرفر الأول | عقارات</span>
         </div>
-        <div class="pairing-input" id="pairingInput1" style="display:none;">
-            <input type="text" id="phoneNumber1" placeholder="أدخل رقم الهاتف (مثال: 201234567890)">
-            <button onclick="startSession('session1', true)">تأكيد كود الربط</button>
+        <div class="controls">
+            <button class="btn-icon" onclick="toggleLanguage()" title="Change Language">
+                <i class="fas fa-language"></i> <span id="langText">EN</span>
+            </button>
+            <button class="btn-icon" onclick="toggleTheme()" id="themeBtn">
+                <i class="fas fa-moon"></i>
+            </button>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Session 1 -->
+        <div id="session1" class="session-card">
+            <h2><i class="fas fa-key"></i> <span data-i18n="session1">الجلسة الأولى</span></h2>
+            <div class="status-badge status-offline" id="statusText1" data-i18n="offline">الحالة: غير متصل</div>
+            <div class="qr-wrapper" id="qr1">
+                <i class="fas fa-qrcode fa-5x" style="color: #cbd5e1;"></i>
+            </div>
+            <div id="pairingCode1" style="font-size: 1.5rem; font-weight: bold; color: var(--secondary-color); margin: 10px 0;"></div>
+            <div class="actions">
+                <button class="btn-primary" onclick="startSession('session1', false)" data-i18n="startQr">بدء عبر QR</button>
+                <button class="btn-secondary" onclick="togglePairing('session1')" data-i18n="startPairing">بدء عبر كود الربط</button>
+            </div>
+            <div class="pairing-form" id="form1">
+                <input type="text" id="phone1" placeholder="رقم الهاتف (مثال: 201234567890)">
+                <button class="btn-primary" style="width:100%" onclick="startSession('session1', true)" data-i18n="confirm">تأكيد</button>
+            </div>
+        </div>
+
+        <!-- Session 2 -->
+        <div id="session2" class="session-card">
+            <h2><i class="fas fa-key"></i> <span data-i18n="session2">الجلسة الثانية</span></h2>
+            <div class="status-badge status-offline" id="statusText2" data-i18n="offline">الحالة: غير متصل</div>
+            <div class="qr-wrapper" id="qr2">
+                <i class="fas fa-qrcode fa-5x" style="color: #cbd5e1;"></i>
+            </div>
+            <div id="pairingCode2" style="font-size: 1.5rem; font-weight: bold; color: var(--secondary-color); margin: 10px 0;"></div>
+            <div class="actions">
+                <button class="btn-primary" onclick="startSession('session2', false)" data-i18n="startQr">بدء عبر QR</button>
+                <button class="btn-secondary" onclick="togglePairing('session2')" data-i18n="startPairing">بدء عبر كود الربط</button>
+            </div>
+            <div class="pairing-form" id="form2">
+                <input type="text" id="phone2" placeholder="رقم الهاتف (مثال: 201234567890)">
+                <button class="btn-primary" style="width:100%" onclick="startSession('session2', true)" data-i18n="confirm">تأكيد</button>
+            </div>
+        </div>
+
+        <!-- Session 3 -->
+        <div id="session3" class="session-card">
+            <h2><i class="fas fa-key"></i> <span data-i18n="session3">الجلسة الثالثة</span></h2>
+            <div class="status-badge status-offline" id="statusText3" data-i18n="offline">الحالة: غير متصل</div>
+            <div class="qr-wrapper" id="qr3">
+                <i class="fas fa-qrcode fa-5x" style="color: #cbd5e1;"></i>
+            </div>
+            <div id="pairingCode3" style="font-size: 1.5rem; font-weight: bold; color: var(--secondary-color); margin: 10px 0;"></div>
+            <div class="actions">
+                <button class="btn-primary" onclick="startSession('session3', false)" data-i18n="startQr">بدء عبر QR</button>
+                <button class="btn-secondary" onclick="togglePairing('session3')" data-i18n="startPairing">بدء عبر كود الربط</button>
+            </div>
+            <div class="pairing-form" id="form3">
+                <input type="text" id="phone3" placeholder="رقم الهاتف (مثال: 201234567890)">
+                <button class="btn-primary" style="width:100%" onclick="startSession('session3', true)" data-i18n="confirm">تأكيد</button>
+            </div>
         </div>
     </div>
 
-    <div id="session2" class="session-container">
-        <h2>الجلسة 2</h2>
-        <div class="qr-display"></div>
-        <div class="pairing-code-display"></div>
-        <div class="status-text" id="status2">الحالة: غير متصل</div>
-        <div class="buttons">
-            <button onclick="startSession('session2', false)">بدء بالـ QR</button>
-            <button onclick="showPairingInput('session2')">بدء بكود الربط</button>
-        </div>
-        <div class="pairing-input" id="pairingInput2" style="display:none;">
-            <input type="text" id="phoneNumber2" placeholder="أدخل رقم الهاتف (مثال: 201234567890)">
-            <button onclick="startSession('session2', true)">تأكيد كود الربط</button>
-        </div>
-    </div>
-
-    <div id="session3" class="session-container">
-        <h2>الجلسة 3</h2>
-        <div class="qr-display"></div>
-        <div class="pairing-code-display"></div>
-        <div class="status-text" id="status3">الحالة: غير متصل</div>
-        <div class="buttons">
-            <button onclick="startSession('session3', false)">بدء بالـ QR</button>
-            <button onclick="showPairingInput('session3')">بدء بكود الربط</button>
-        </div>
-        <div class="pairing-input" id="pairingInput3" style="display:none;">
-            <input type="text" id="phoneNumber3" placeholder="أدخل رقم الهاتف (مثال: 201234567890)">
-            <button onclick="startSession('session3', true)">تأكيد كود الربط</button>
-        </div>
-    </div>
+    <footer>
+        &copy; 2026 <span data-i18n="brand">السيرفر الأول | عقارات</span> - جميع الحقوق محفوظة
+    </footer>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
+        let currentLang = 'ar';
 
-        function showPairingInput(sessionId) {
-            document.getElementById(`pairingInput${sessionId.replace('session', '')}`).style.display = 'flex';
+        const i18n = {
+            ar: {
+                brand: "السيرفر الأول | عقارات",
+                session1: "الجلسة الأولى",
+                session2: "الجلسة الثانية",
+                session3: "الجلسة الثالثة",
+                offline: "الحالة: غير متصل",
+                connecting: "الحالة: جاري الاتصال...",
+                online: "الحالة: متصل ✅",
+                scanNow: "الحالة: امسح الكود الآن",
+                enterPairing: "الحالة: أدخل كود الربط",
+                startQr: "بدء عبر QR",
+                startPairing: "بدء عبر كود الربط",
+                confirm: "تأكيد",
+                phonePlaceholder: "رقم الهاتف (مثال: 201234567890)",
+                connectedMsg: "تم الاتصال بنجاح!"
+            },
+            en: {
+                brand: "Server One | Real Estate",
+                session1: "Session One",
+                session2: "Session Two",
+                session3: "Session Three",
+                offline: "Status: Offline",
+                connecting: "Status: Connecting...",
+                online: "Status: Connected ✅",
+                scanNow: "Status: Scan QR Now",
+                enterPairing: "Status: Enter Pairing Code",
+                startQr: "Start via QR",
+                startPairing: "Start via Pairing Code",
+                confirm: "Confirm",
+                phonePlaceholder: "Phone Number (e.g. 201234567890)",
+                connectedMsg: "Connected Successfully!"
+            }
+        };
+
+        function toggleLanguage() {
+            currentLang = currentLang === 'ar' ? 'en' : 'ar';
+            document.documentElement.lang = currentLang;
+            document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
+            document.getElementById('langText').innerText = currentLang === 'ar' ? 'EN' : 'عربي';
+            updateUI();
+        }
+
+        function updateUI() {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                el.innerText = i18n[currentLang][key] || el.innerText;
+            });
+            document.querySelectorAll('input').forEach(el => {
+                el.placeholder = i18n[currentLang].phonePlaceholder;
+            });
+        }
+
+        function toggleTheme() {
+            const body = document.body;
+            const btn = document.getElementById('themeBtn');
+            if (body.getAttribute('data-theme') === 'light') {
+                body.setAttribute('data-theme', 'dark');
+                btn.innerHTML = '<i class="fas fa-sun"></i>';
+            } else {
+                body.setAttribute('data-theme', 'light');
+                btn.innerHTML = '<i class="fas fa-moon"></i>';
+            }
+        }
+
+        function togglePairing(sessionId) {
+            const num = sessionId.replace('session', '');
+            const form = document.getElementById(`form<LaTex>${num}`);
+            form.style.display = form.style.display === 'block' ? 'none' : 'block';
         }
 
         async function startSession(sessionId, usePairingCode) {
-            const sessionDiv = document.getElementById(sessionId);
-            const qrDisplay = sessionDiv.querySelector('.qr-display');
-            const pairingCodeDisplay = sessionDiv.querySelector('.pairing-code-display');
-            const statusText = sessionDiv.querySelector('.status-text');
-            const phoneNumberInput = document.getElementById(`phoneNumber${sessionId.replace('session', '')}`);
-            const phoneNumber = phoneNumberInput ? phoneNumberInput.value : null;
+            const num = sessionId.replace('session', '');
+            const statusText = document.getElementById(`statusText$</LaTex>{num}`);
+            const phone = document.getElementById(`phone${num}`).value;
 
-            qrDisplay.innerHTML = '';
-            pairingCodeDisplay.innerHTML = '';
-            statusText.className = 'status-text connecting';
-            statusText.innerText = 'الحالة: جاري الاتصال...';
+            statusText.className = 'status-badge status-connecting';
+            statusText.innerText = i18n[currentLang].connecting;
 
             try {
                 const response = await fetch('/session/start', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sessionId, usePairingCode, phoneNumber })
+                    body: JSON.stringify({ sessionId, usePairingCode, phoneNumber: phone })
                 });
                 const data = await response.json();
-                if (data.success) {
-                    console.log(data.message);
-                    if (data.status === "already_connected") {
-                        statusText.innerText = `الحالة: متصل (${data.user.id.user})`;
-                        statusText.className = 'status-text connected';
-                    }
-                } else {
-                    statusText.innerText = `الحالة: خطأ - ${data.error}`;
-                    statusText.className = 'status-text logged-out';
+                if (data.status === "already_connected") {
+                    statusText.className = 'status-badge status-online';
+                    statusText.innerText = i18n[currentLang].online;
                 }
-            } catch (error) {
-                console.error('Error starting session:', error);
-                statusText.innerText = `الحالة: خطأ في الاتصال - ${error.message}`;
-                statusText.className = 'status-text logged-out';
+            } catch (e) {
+                statusText.className = 'status-badge status-offline';
+                statusText.innerText = "Error: " + e.message;
             }
         }
 
         socket.on("qr", (data) => {
-            const sessionDiv = document.getElementById(data.sessionId);
-            if (sessionDiv) {
-                sessionDiv.querySelector('.qr-display').innerHTML = `<img src="${data.qrImage}" alt="QR Code">`;
-                sessionDiv.querySelector('.pairing-code-display').innerHTML = '';
-                sessionDiv.querySelector('.status-text').innerText = "الحالة: امسح الكود الآن";
-                sessionDiv.querySelector('.status-text').className = 'status-text connecting';
-            }
+            const num = data.sessionId.replace('session', '');
+            const qrDiv = document.getElementById(`qr${num}`);
+            const statusText = document.getElementById(`statusText<LaTex>${num}`);
+            qrDiv.innerHTML = `<img src="$</LaTex>{data.qrImage}" alt="QR Code">`;
+            statusText.innerText = i18n[currentLang].scanNow;
+            statusText.className = 'status-badge status-connecting';
         });
 
         socket.on("pairing_code", (data) => {
-            const sessionDiv = document.getElementById(data.sessionId);
-            if (sessionDiv) {
-                sessionDiv.querySelector('.qr-display').innerHTML = '';
-                sessionDiv.querySelector('.pairing-code-display').innerHTML = `<h3>كود الربط: <strong>${data.code}</strong></h3><p>أدخل هذا الكود في واتساب على هاتفك.</p>`;
-                sessionDiv.querySelector('.status-text').innerText = "الحالة: أدخل كود الربط";
-                sessionDiv.querySelector('.status-text').className = 'status-text connecting';
-            }
+            const num = data.sessionId.replace('session', '');
+            const codeDiv = document.getElementById(`pairingCode<LaTex>${num}`);
+            const qrDiv = document.getElementById(`qr$</LaTex>{num}`);
+            const statusText = document.getElementById(`statusText${num}`);
+            qrDiv.innerHTML = '<i class="fas fa-mobile-screen-button fa-5x" style="color: var(--primary-color);"></i>';
+            codeDiv.innerText = data.code;
+            statusText.innerText = i18n[currentLang].enterPairing;
+            statusText.className = 'status-badge status-connecting';
         });
 
         socket.on("status", (data) => {
-            const sessionDiv = document.getElementById(data.sessionId);
-            if (sessionDiv) {
-                const statusText = sessionDiv.querySelector('.status-text');
-                if (data.status === "connected") {
-                    statusText.innerText = `الحالة: متصل (${data.user.id.user})`;
-                    statusText.className = 'status-text connected';
-                    sessionDiv.querySelector('.qr-display').innerHTML = '<h3>✅ تم الاتصال بنجاح!</h3>';
-                    sessionDiv.querySelector('.pairing-code-display').innerHTML = '';
-                } else if (data.status === "logged_out") {
-                    statusText.innerText = "الحالة: تم تسجيل الخروج. ابدأ جلسة جديدة.";
-                    statusText.className = 'status-text logged-out';
-                    sessionDiv.querySelector('.qr-display').innerHTML = '';
-                    sessionDiv.querySelector('.pairing-code-display').innerHTML = '';
-                } else if (data.status === "reconnecting") {
-                    statusText.innerText = "الحالة: جاري إعادة الاتصال...";
-                    statusText.className = 'status-text connecting';
-                }
+            const num = data.sessionId.replace('session', '');
+            const statusText = document.getElementById(`statusText${num}`);
+            const qrDiv = document.getElementById(`qr<LaTex>${num}`);
+            const codeDiv = document.getElementById(`pairingCode$</LaTex>{num}`);
+
+            if (data.status === "connected") {
+                statusText.innerText = i18n[currentLang].online;
+                statusText.className = 'status-badge status-online';
+                qrDiv.innerHTML = '<i class="fas fa-check-circle fa-5x" style="color: var(--secondary-color);"></i>';
+                codeDiv.innerText = '';
+            } else if (data.status === "logged_out") {
+                statusText.innerText = i18n[currentLang].offline;
+                statusText.className = 'status-badge status-offline';
+                qrDiv.innerHTML = '<i class="fas fa-qrcode fa-5x" style="color: #cbd5e1;"></i>';
             }
         });
     </script>
 </body>
 </html>
-
