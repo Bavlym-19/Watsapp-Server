@@ -62,6 +62,7 @@ app.get("/session/:sessionId/status", (req, res) => {
     }
 });
 
+// دالة تشغيل الجلسة (مصححة ومنظفة وبدون تكرار)
 async function startWhatsAppSession(sessionId, usePairingCode = false, phoneNumber = null) {
     const authPath = `auth_info_baileys_${sessionId}`;
     const { state, saveCreds } = await useMultiFileAuthState(authPath);
@@ -100,27 +101,34 @@ async function startWhatsAppSession(sessionId, usePairingCode = false, phoneNumb
 
         if (connection === "close") {
             let reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
-            if (reason === DisconnectReason.loggedOut) {
-                console.log(`Session ${sessionId} logged out. Deleting auth files.`);
-                if (fs.existsSync(authPath)) fs.rmSync(authPath, { recursive: true, force: true });
-                if (sessions[sessionId]) sessions[sessionId].status = "logged_out";
+            console.log(`❌ الاتصال مقفول لجلسة [${sessionId}]. الكود أو السبب: ${reason}`);
+            
+            if (reason === DisconnectReason.loggedOut || reason === 401) {
+                console.log(`Session ${sessionId} logged out or token expired. Deleting auth files...`);
+                if (fs.existsSync(authPath)) {
+                    fs.rmSync(authPath, { recursive: true, force: true });
+                }
+                delete sessions[sessionId]; 
                 io.emit("status", { sessionId, status: "logged_out" });
             } else {
-                console.log(`Connection closed for session ${sessionId}, reconnecting...`);
+                console.log(`🔄 تهنيجة مؤقتة في اتصال جلسة [${sessionId}]، جاري محاولة إعادة الربط...`);
                 if (sessions[sessionId]) sessions[sessionId].status = "reconnecting";
                 io.emit("status", { sessionId, status: "reconnecting" });
+                
                 setTimeout(() => startWhatsAppSession(sessionId, usePairingCode, phoneNumber), 5000);
             }
         } else if (connection === "open") {
-            console.log(`Opened connection for session ${sessionId}`);
-            if (sessions[sessionId]) sessions[sessionId].status = "connected";
+            console.log(`✅ تم فتح خط الاتصال الحي والواتساب جاهز للإرسال لجلسة: [${sessionId}]`);
+            if (sessions[sessionId]) {
+                sessions[sessionId].status = "connected";
+                sessions[sessionId].sock = sock; 
+            }
             io.emit("status", { sessionId, status: "connected", user: sock.user });
         }
     });
 
     sock.ev.on("creds.update", saveCreds);
 
-    // استقبال الرسائل وطباعتها
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
         if (type !== "notify") return;
         for (const msg of messages) {
@@ -134,7 +142,7 @@ async function startWhatsAppSession(sessionId, usePairingCode = false, phoneNumb
     return sock;
 }
 
-// 🚀 الـ Endpoint دي تم تنظيفها تماماً من الـ API KEY عشان ريبليت يتصل فوراً
+// الـ Endpoint بتاعة إرسال الرسائل من ريبليت
 app.post("/send-message", async (req, res) => {
     const { sessionId, number, message } = req.body;
 
@@ -158,6 +166,28 @@ app.post("/send-message", async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// كود استعادة الجلسات تلقائياً عند تشغيل السيرفر
+const checkAndInitSessions = async () => {
+    try {
+        const files = fs.readdirSync(__dirname);
+        const authFolders = files.filter(file => file.startsWith("auth_info_baileys_"));
+
+        for (const folder of authFolders) {
+            const sessionId = folder.replace("auth_info_baileys_", "");
+            console.log(`🔄 تم العثور على جلسة مخزنة [${sessionId}]، جاري إعادة الاتصال تلقائياً...`);
+            
+            sessions[sessionId] = { status: "connecting" };
+            const sock = await startWhatsAppSession(sessionId, false, null);
+            sessions[sessionId] = { sock, status: "connecting" };
+        }
+    } catch (err) {
+        console.error("خطأ أثناء استعادة الجلسات القديمة تلقائياً:", err);
+    }
+};
+
+// تشغيل الفحص وبدء السيرفر
+checkAndInitSessions();
 
 server.listen(port, () => {
     console.log(`Server is running on port ${port}`);
