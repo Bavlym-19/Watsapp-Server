@@ -3,7 +3,6 @@ const {
     useMultiFileAuthState,
     DisconnectReason,
     fetchLatestBaileysVersion,
-    makeCacheableSignalKeyStore,
     isJidBroadcast, isJidGroup, jidNormalizedUser
 } = require("@whiskeysockets/baileys");
 const { Boom } = require("@hapi/boom");
@@ -43,8 +42,7 @@ app.post("/session/start", async (req, res) => {
     }
 
     try {
-        const sock = await startWhatsAppSession(sessionId, usePairingCode, phoneNumber);
-        sessions[sessionId] = { sock, status: "connecting" };
+        await startWhatsAppSession(sessionId, usePairingCode, phoneNumber);
         res.json({ success: true, message: `Session ${sessionId} started.` });
     } catch (error) {
         console.error(`Error starting session ${sessionId}:`, error);
@@ -62,11 +60,11 @@ app.get("/session/:sessionId/status", (req, res) => {
     }
 });
 
-// دالة تشغيل الجلسة (مصححة ومنظفة وبدون تكرار)
+// دالة تشغيل الجلسة (تم إصلاح خطأ الـ Store)
 async function startWhatsAppSession(sessionId, usePairingCode = false, phoneNumber = null) {
     const authPath = `auth_info_baileys_${sessionId}`;
     const { state, saveCreds } = await useMultiFileAuthState(authPath);
-    const { version, isLatest } = await fetchLatestBaileysVersion();
+    const { version } = await fetchLatestBaileysVersion();
     
     const logger = P({ level: "silent" });
     
@@ -74,7 +72,7 @@ async function startWhatsAppSession(sessionId, usePairingCode = false, phoneNumb
         version,
         auth: {
             creds: state.creds,
-            keys: makeCacheableSignalKeyStore(state.creds, logger),
+            keys: state.keys, // تصليح الخطأ هنا
         },
         printQRInTerminal: false,
         logger,
@@ -83,10 +81,16 @@ async function startWhatsAppSession(sessionId, usePairingCode = false, phoneNumb
         phoneNumber: usePairingCode ? phoneNumber : undefined
     });
 
+    sessions[sessionId] = { sock, status: "connecting" };
+
     if (usePairingCode && !sock.user && phoneNumber) {
-        const code = await sock.requestPairingCode(phoneNumber);
-        console.log(`Pairing Code for session ${sessionId}: ${code}`);
-        io.emit("pairing_code", { sessionId, code });
+        try {
+            const code = await sock.requestPairingCode(phoneNumber);
+            console.log(`Pairing Code for session ${sessionId}: ${code}`);
+            io.emit("pairing_code", { sessionId, code });
+        } catch (err) {
+            console.error(`خطأ في جلب كود الاقتران للجلسة ${sessionId}:`, err);
+        }
     }
 
     sock.ev.on("connection.update", async (update) => {
@@ -103,7 +107,7 @@ async function startWhatsAppSession(sessionId, usePairingCode = false, phoneNumb
             let reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
             console.log(`❌ الاتصال مقفول لجلسة [${sessionId}]. الكود أو السبب: ${reason}`);
             
-            if (reason === DisconnectReason.loggedOut || reason === 401) {
+            if (reason === DisconnectReason.loggedOut || reason === 401 || reason === 403) {
                 console.log(`Session ${sessionId} logged out or token expired. Deleting auth files...`);
                 if (fs.existsSync(authPath)) {
                     fs.rmSync(authPath, { recursive: true, force: true });
@@ -115,7 +119,9 @@ async function startWhatsAppSession(sessionId, usePairingCode = false, phoneNumb
                 if (sessions[sessionId]) sessions[sessionId].status = "reconnecting";
                 io.emit("status", { sessionId, status: "reconnecting" });
                 
-                setTimeout(() => startWhatsAppSession(sessionId, usePairingCode, phoneNumber), 5000);
+                setTimeout(async () => {
+                    await startWhatsAppSession(sessionId, usePairingCode, phoneNumber);
+                }, 5000);
             }
         } else if (connection === "open") {
             console.log(`✅ تم فتح خط الاتصال الحي والواتساب جاهز للإرسال لجلسة: [${sessionId}]`);
@@ -176,17 +182,13 @@ const checkAndInitSessions = async () => {
         for (const folder of authFolders) {
             const sessionId = folder.replace("auth_info_baileys_", "");
             console.log(`🔄 تم العثور على جلسة مخزنة [${sessionId}]، جاري إعادة الاتصال تلقائياً...`);
-            
-            sessions[sessionId] = { status: "connecting" };
-            const sock = await startWhatsAppSession(sessionId, false, null);
-            sessions[sessionId] = { sock, status: "connecting" };
+            await startWhatsAppSession(sessionId, false, null);
         }
     } catch (err) {
         console.error("خطأ أثناء استعادة الجلسات القديمة تلقائياً:", err);
     }
 };
 
-// تشغيل الفحص وبدء السيرفر
 checkAndInitSessions();
 
 server.listen(port, () => {
