@@ -20,9 +20,6 @@ const server = http.createServer(app);
 const io = new Server(server);
 const port = process.env.PORT || 3000;
 
-// --- السطر المضاف: قراءة مفتاح الأمان من إعدادات ريندر ---
-const API_KEY = process.env.API_KEY || "Bavlym19"; 
-
 app.use(express.json());
 
 // Store active WhatsApp sessions
@@ -70,7 +67,7 @@ async function startWhatsAppSession(sessionId, usePairingCode = false, phoneNumb
     const { state, saveCreds } = await useMultiFileAuthState(authPath);
     const { version, isLatest } = await fetchLatestBaileysVersion();
     
-    const logger = P({ level: "silent" }); // Use silent logger for less console spam
+    const logger = P({ level: "silent" });
     
     const sock = makeWASocket({
         version,
@@ -78,11 +75,11 @@ async function startWhatsAppSession(sessionId, usePairingCode = false, phoneNumb
             creds: state.creds,
             keys: makeCacheableSignalKeyStore(state.creds, logger),
         },
-        printQRInTerminal: false, // We will handle QR code via WebSocket
+        printQRInTerminal: false,
         logger,
-        browser: ['Chrome', 'Ubuntu', '1.0'], // Custom browser info
-        usePairingCode: usePairingCode, // Enable pairing code
-        phoneNumber: usePairingCode ? phoneNumber : undefined // Provide phone number for pairing code
+        browser: ['Chrome', 'Ubuntu', '1.0'],
+        usePairingCode: usePairingCode,
+        phoneNumber: usePairingCode ? phoneNumber : undefined
     });
 
     if (usePairingCode && !sock.user && phoneNumber) {
@@ -92,7 +89,7 @@ async function startWhatsAppSession(sessionId, usePairingCode = false, phoneNumb
     }
 
     sock.ev.on("connection.update", async (update) => {
-        const { connection, lastDisconnect, qr, isNewLogin } = update;
+        const { connection, lastDisconnect, qr } = update;
         
         if (qr) {
             console.log(`QR Code received for session ${sessionId}, emitting to socket...`);
@@ -109,7 +106,7 @@ async function startWhatsAppSession(sessionId, usePairingCode = false, phoneNumb
                 if (sessions[sessionId]) sessions[sessionId].status = "logged_out";
                 io.emit("status", { sessionId, status: "logged_out" });
             } else {
-                console.log(`Connection closed for session ${sessionId} due to ${lastDisconnect?.error}, reconnecting...`);
+                console.log(`Connection closed for session ${sessionId}, reconnecting...`);
                 if (sessions[sessionId]) sessions[sessionId].status = "reconnecting";
                 io.emit("status", { sessionId, status: "reconnecting" });
                 setTimeout(() => startWhatsAppSession(sessionId, usePairingCode, phoneNumber), 5000);
@@ -123,34 +120,23 @@ async function startWhatsAppSession(sessionId, usePairingCode = false, phoneNumb
 
     sock.ev.on("creds.update", saveCreds);
 
-    // ================= [ إضافة الجزء المسؤول عن استقبال الرسائل ] =================
+    // استقبال الرسائل وطباعتها
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
-        if (type !== "notify") return; // عشان يلقط الرسائل الحقيقية بس
-
+        if (type !== "notify") return;
         for (const msg of messages) {
-            if (!msg.message || msg.key.fromMe) continue; // يتجاهل رسائلك أنت
-
+            if (!msg.message || msg.key.fromMe) continue;
             const from = msg.key.remoteJid;
             const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
-
-            console.log(`📩 رسالة جديدة في جلسة [${sessionId}] من [${from}]: ${text}`);
-
-            // 💡 هنا بقى في المستقبل هتحط كود الـ axios عشان يبعت البيانات دي لـ Replit تلقائياً!
+            console.log(`📩 رسالة جديدة في [${sessionId}] من [${from}]: ${text}`);
         }
     });
-    // ============================================================================
 
     return sock;
 }
 
-// API to send message from Replit for a specific session
+// 🚀 الـ Endpoint دي تم تنظيفها تماماً من الـ API KEY عشان ريبليت يتصل فوراً
 app.post("/send-message", async (req, res) => {
-    const { sessionId, number, message, key } = req.body;
-
-    // --- السطور المضافة: التأكد من صحة مفتاح الأمان ---
-    if (key !== API_KEY) {
-        return res.status(401).json({ error: "خطأ: مفتاح الأمان غير صحيح!" });
-    }
+    const { sessionId, number, message } = req.body;
 
     if (!sessionId || !number || !message) {
         return res.status(400).json({ error: "Session ID, number, and message are required" });
@@ -162,14 +148,13 @@ app.post("/send-message", async (req, res) => {
     }
 
     try {
-        // تنظيف الرقم من أي حروف أو رموز وتجهيز الـ JID بشكل سليم
         let cleanNumber = number.replace(/[^0-9]/g, "");
         const jid = cleanNumber.includes("@s.whatsapp.net") ? cleanNumber : `${cleanNumber}@s.whatsapp.net`;
         
         await session.sock.sendMessage(jid, { text: message });
         res.json({ success: true, sessionId });
     } catch (err) {
-        console.error(`Error sending message for session ${sessionId}:`, err);
+        console.error(`Error sending message:`, err);
         res.status(500).json({ error: err.message });
     }
 });
